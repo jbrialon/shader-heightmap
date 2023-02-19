@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MapControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as dat from "lil-gui";
+import Stats from "three/addons/libs/stats.module.js";
+import { ImprovedNoise } from "three/addons/math/ImprovedNoise.js";
 
 const gui = new dat.GUI();
 
@@ -11,8 +13,10 @@ const parameters = {
   dispScale: 250,
   ambientColor: 0x666666,
   directionalColor: 0x5c4119,
-  fogColor: 0xcccccc,
-  fogDensity: 0.0011,
+  fogColor: 0x9abcc7,
+  fogDensity: 0.0005,
+  fogNear: 1000,
+  fogFar: 2000,
 };
 
 /**
@@ -26,17 +30,27 @@ const textureLoader = new THREE.TextureLoader();
 // Canvas
 const canvas = document.querySelector("canvas.webgl");
 
+const stats = new Stats();
+document.body.appendChild(stats.dom);
+
 // Scene
 const scene = new THREE.Scene();
 
 const createFog = () => {
-  scene.fog = new THREE.FogExp2(parameters.fogColor, parameters.fogDensity);
+  // scene.fog = new THREE.FogExp2(parameters.fogColor, parameters.fogDensity);
+  scene.fog = new THREE.Fog(
+    parameters.fogColor,
+    parameters.fogNear,
+    parameters.fogFar
+  );
 };
 createFog();
 
 const fogFolder = gui.addFolder("Fog");
 fogFolder.addColor(parameters, "fogColor").onChange(createFog);
-fogFolder.add(parameters, "fogDensity", 0, 0.005, 0.0001).onChange(createFog);
+// fogFolder.add(parameters, "fogDensity", 0, 0.005, 0.0001).onChange(createFog);
+fogFolder.add(parameters, "fogNear", 0, 2000, 1).onChange(createFog);
+fogFolder.add(parameters, "fogFar", 0, 2000, 1).onChange(createFog);
 /**
  * Object
  */
@@ -44,17 +58,50 @@ fogFolder.add(parameters, "fogDensity", 0, 0.005, 0.0001).onChange(createFog);
 let plane = null;
 let wireframeMaterial = null;
 let planeGeometry = null;
+
 const displacementMap = textureLoader.load("/annecy.png", () => {
   createGround();
 });
 displacementMap.wrapS = displacementMap.wrapT = THREE.RepeatWrapping;
+displacementMap.repeat.set(1, 1);
+
+function generateHeight(width, height) {
+  let seed = Math.PI / 4;
+  window.Math.random = function () {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const size = width * height,
+    data = new Uint8Array(size);
+  const perlin = new ImprovedNoise(),
+    z = Math.random() * 100;
+
+  let quality = 1;
+
+  for (let j = 0; j < 4; j++) {
+    for (let i = 0; i < size; i++) {
+      const x = i % width,
+        y = ~~(i / width);
+      data[i] += Math.abs(
+        perlin.noise(x / quality, y / quality, z) * quality * 1.75
+      );
+    }
+
+    quality *= 5;
+  }
+
+  return data;
+}
+
+const data = generateHeight(parameters.widthSeg, parameters.heightSeg);
 
 const createGround = () => {
   if (plane !== null) {
     wireframeMaterial.dispose();
     scene.remove(plane);
   }
-  displacementMap.repeat.set(1, 1);
+
   wireframeMaterial = new THREE.MeshStandardMaterial({
     flatShading: true,
     displacementMap: displacementMap,
@@ -64,9 +111,15 @@ const createGround = () => {
   planeGeometry = new THREE.PlaneGeometry(
     2000,
     2000,
-    parameters.widthSeg,
-    parameters.heightSeg
+    parameters.widthSeg - 1,
+    parameters.heightSeg - 1
   );
+  // planeGeometry.rotateX(-Math.PI / 2);
+
+  // const vertices = planeGeometry.attributes.position.array;
+  // for (let i = 0, j = 0, l = vertices.length; i < l; i++, j += 3) {
+  //   vertices[j + 1] = data[i] * 50;
+  // }
 
   const shaderMaterial = new THREE.ShaderMaterial({
     vertexShader: document.getElementById("vertexShader").textContent,
@@ -98,16 +151,6 @@ let waterGeometry = null;
 const createWater = () => {
   waterGeometry = new THREE.PlaneGeometry(1000, 1000, 15, 15);
 
-  // let vertData = [];
-  // let v3 = new THREE.Vector3(); // for re-use
-  // for (let i = 0; i < waterGeometry.attributes.position.count; i++) {
-  //   v3.fromBufferAttribute(waterGeometry.attributes.position, i);
-  //   vertData.push({
-  //     initH: v3.y,
-  //     amplitude: THREE.MathUtils.randFloatSpread(2) * 10000,
-  //     phase: THREE.MathUtils.randFloat(0, Math.PI) * 10000,
-  //   });
-  // }
   let waterMaterial = new THREE.MeshLambertMaterial({
     color: "aqua",
     flatShading: true,
@@ -208,7 +251,7 @@ controls.dampingFactor = 0.05;
 controls.screenSpacePanning = false;
 
 controls.minDistance = 100;
-controls.maxDistance = 1000;
+controls.maxDistance = 2000;
 
 controls.maxPolarAngle = Math.PI / 2;
 
@@ -232,18 +275,13 @@ const clock = new THREE.Clock();
 const tick = () => {
   const elapsedTime = clock.getElapsedTime();
 
-  // vertData.forEach((vd, idx) => {
-  //   let y = vd.initH + Math.sin(elapsedTime + vd.phase) * vd.amplitude;
-  //   waterGeometry.attributes.position.setY(idx, y);
-  // });
-  // waterGeometry.attributes.position.needsUpdate = true;
-  // waterGeometry.computeVertexNormals();
-
   // Update Object
   // plane.rotation.y = 0.1 * elapsedTime
 
   // plane.rotation.x = 0.15 * elapsedTime
 
+  // stats
+  stats.update();
   // Update controls
   controls.update();
 
