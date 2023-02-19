@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>25 - Realistic render</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas class="webgl"></canvas>
+    <script id="vertexShader" type="x-shader/x-vertex">
+      uniform sampler2D bumpTexture;
+      uniform float bumpScale;
+
+      varying float vAmount;
+
+      void main()
+      {
+          vec4 bumpData = texture2D( bumpTexture, uv);
+
+          vec3 newPosition = position + normal * bumpScale * vAmount;
+
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+      }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-vertex">
+      varying float vAmount;
+
+      void main()
+      {
+          vec3 water = (smoothstep(0.01, 0.99, vAmount)) * vec3(0.0, 0.0, 1.0);
+
+          gl_FragColor = vec4(water, 1.0);
+      }
+    </script>
+    <script type="module" src="./script.js"></script>
+  </body>
+</html>
