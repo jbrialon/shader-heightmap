@@ -9,28 +9,45 @@
   <body>
     <canvas class="webgl"></canvas>
     <script id="vertexShader" type="x-shader/x-vertex">
-      uniform sampler2D bumpTexture;
-      uniform float bumpScale;
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      varying vec3 vColor;
 
-      varying float vAmount;
+      uniform float heightScale;
+      uniform sampler2D heightMap;
 
-      void main()
-      {
-          vec4 bumpData = texture2D( bumpTexture, uv);
+      void main() {
+        vPosition = position;
+        vNormal = normal;
 
-          vec3 newPosition = position + normal * bumpScale * vAmount;
+        // compute height value from heightmap texture
+        vec4 heightPixel = texture2D(heightMap, uv);
+        float height = heightPixel.r * heightScale;
 
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+        // compute vertex color based on height value
+        vColor = vec3(heightPixel.r, heightPixel.r, heightPixel.r);
+
+        // apply model and projection matrices
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * height, 1.0);
       }
     </script>
     <script id="fragmentShader" type="x-shader/x-vertex">
-      varying float vAmount;
+      uniform float heightScale;
+      uniform sampler2D heightMap;
 
-      void main()
-      {
-          vec3 water = (smoothstep(0.01, 0.99, vAmount)) * vec3(0.0, 0.0, 1.0);
+      varying vec3 vColor;
 
-          gl_FragColor = vec4(water, 1.0);
+      void main() {
+          // compute the color based on the z position of the vertex
+          float height = vColor.r; // height value is stored in the red channel of vColor
+
+          vec3 water = (smoothstep(0.01, 0.35, height ) - smoothstep(0.34, 0.35, height )) * vec3(0.0, 0.0, 1.0);
+          vec3 sand = (smoothstep(0.3, 0.32, height ) - smoothstep(0.30, 0.40, height )) * vec3(0.76, 0.7, 0.5);
+          vec3 grass = (smoothstep(0.30, 0.46, height ) - smoothstep(0.33, 0.60, height )) * vec3(0.0, 0.6, 0.01);
+          vec3 rock = (smoothstep(0.43, 0.75, height ) - smoothstep(0.50, 0.85, height )) * vec3(0.28, 0.25, 0.23);
+          vec3 snow = (smoothstep(0.70, 0.8, height ) ) * vec3(1, 1, 1);
+
+          gl_FragColor = vec4(water + sand + grass + rock + snow, 1.0);
       }
     </script>
     <script type="module" src="./script.js"></script>

@@ -6,11 +6,13 @@ import * as dat from "lil-gui";
 const gui = new dat.GUI();
 
 const parameters = {
-  widthSeg: 300,
-  heightSeg: 300,
-  dispScale: 100,
-  horTexture: 1,
-  vertTexture: 1,
+  widthSeg: 100,
+  heightSeg: 100,
+  dispScale: 250,
+  ambientColor: 0x666666,
+  directionalColor: 0x5c4119,
+  fogColor: 0xcccccc,
+  fogDensity: 0.0011,
 };
 
 /**
@@ -27,6 +29,14 @@ const canvas = document.querySelector("canvas.webgl");
 // Scene
 const scene = new THREE.Scene();
 
+const createFog = () => {
+  scene.fog = new THREE.FogExp2(parameters.fogColor, parameters.fogDensity);
+};
+createFog();
+
+const fogFolder = gui.addFolder("Fog");
+fogFolder.addColor(parameters, "fogColor").onChange(createFog);
+fogFolder.add(parameters, "fogDensity", 0, 0.005, 0.0001).onChange(createFog);
 /**
  * Object
  */
@@ -39,98 +49,115 @@ const displacementMap = textureLoader.load("/annecy.png", () => {
 });
 displacementMap.wrapS = displacementMap.wrapT = THREE.RepeatWrapping;
 
-// vertex shader
-const vertexShader = `
-  varying vec3 vPosition;
-  varying vec3 vNormal;
-  varying vec3 vColor;
-
-  uniform float heightScale;
-  uniform sampler2D heightMap;
-
-  void main() {
-    vPosition = position;
-    vNormal = normal;
-
-    // compute height value from heightmap texture
-    vec4 heightPixel = texture2D(heightMap, uv);
-    float height = heightPixel.r * heightScale;
-
-    // compute vertex color based on height value
-    vColor = vec3(heightPixel.r, heightPixel.r, heightPixel.r);
-
-    // apply model and projection matrices
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position + normal * height, 1.0);
-  }
-`;
-
-const fragmentShader = `
-    uniform float heightScale;
-    uniform sampler2D heightMap;
-
-    varying vec3 vColor;
-
-    void main() {
-        // compute the color based on the z position of the vertex
-        float height = vColor.r; // height value is stored in the red channel of vColor
-
-        vec3 water = (smoothstep(0.01, 0.35, height ) - smoothstep(0.34, 0.35, height )) * vec3(0.0, 0.0, 1.0);
-        vec3 sand = (smoothstep(0.3, 0.32, height ) - smoothstep(0.30, 0.40, height )) * vec3(0.76, 0.7, 0.5);
-        vec3 grass = (smoothstep(0.30, 0.46, height ) - smoothstep(0.33, 0.60, height )) * vec3(0.0, 0.6, 0.01);
-        vec3 rock = (smoothstep(0.43, 0.75, height ) - smoothstep(0.50, 0.85, height )) * vec3(0.28, 0.25, 0.23);
-        vec3 snow = (smoothstep(0.70, 0.8, height ) ) * vec3(1, 1, 1);
-
-        gl_FragColor = vec4(water + sand + grass + rock + snow, 1.0);
-    }
-`;
-
 const createGround = () => {
   if (plane !== null) {
     wireframeMaterial.dispose();
     scene.remove(plane);
   }
-  displacementMap.repeat.set(parameters.horTexture, parameters.vertTexture);
+  displacementMap.repeat.set(1, 1);
   wireframeMaterial = new THREE.MeshStandardMaterial({
-    wireframe: true,
+    flatShading: true,
     displacementMap: displacementMap,
     displacementScale: parameters.dispScale,
   });
 
   planeGeometry = new THREE.PlaneGeometry(
-    1000,
-    1000,
+    2000,
+    2000,
     parameters.widthSeg,
     parameters.heightSeg
   );
 
   const shaderMaterial = new THREE.ShaderMaterial({
-    vertexShader: vertexShader,
-    fragmentShader: fragmentShader,
+    vertexShader: document.getElementById("vertexShader").textContent,
+    fragmentShader: document.getElementById("fragmentShader").textContent,
     uniforms: {
       heightMap: { value: displacementMap },
       heightScale: { value: parameters.dispScale },
     },
   });
 
-  plane = new THREE.Mesh(planeGeometry, shaderMaterial);
-
+  plane = new THREE.Mesh(planeGeometry, wireframeMaterial);
   plane.rotation.x = -Math.PI / 2;
   scene.add(plane);
 };
 
-gui.add(parameters, "widthSeg", 1, 1000, 1).onFinishChange(createGround);
-gui.add(parameters, "heightSeg", 1, 1000, 1).onFinishChange(createGround);
-gui.add(parameters, "dispScale", 0, 200, 1).onFinishChange(createGround);
-gui.add(parameters, "horTexture", 0, 50, 1).onFinishChange(createGround);
-gui.add(parameters, "vertTexture", 0, 50, 1).onFinishChange(createGround);
+const groundFolder = gui.addFolder("Ground");
+groundFolder
+  .add(parameters, "widthSeg", 1, 1000, 1)
+  .onFinishChange(createGround);
+groundFolder
+  .add(parameters, "heightSeg", 1, 1000, 1)
+  .onFinishChange(createGround);
+groundFolder
+  .add(parameters, "dispScale", 0, 300, 1)
+  .onFinishChange(createGround);
 
+// Create Water
+let waterGeometry = null;
+const createWater = () => {
+  waterGeometry = new THREE.PlaneGeometry(1000, 1000, 15, 15);
+
+  // let vertData = [];
+  // let v3 = new THREE.Vector3(); // for re-use
+  // for (let i = 0; i < waterGeometry.attributes.position.count; i++) {
+  //   v3.fromBufferAttribute(waterGeometry.attributes.position, i);
+  //   vertData.push({
+  //     initH: v3.y,
+  //     amplitude: THREE.MathUtils.randFloatSpread(2) * 10000,
+  //     phase: THREE.MathUtils.randFloat(0, Math.PI) * 10000,
+  //   });
+  // }
+  let waterMaterial = new THREE.MeshLambertMaterial({
+    color: "aqua",
+    flatShading: true,
+  });
+  let water = new THREE.Mesh(waterGeometry, waterMaterial);
+
+  water.position.y = 21;
+  water.rotation.x = -Math.PI / 2;
+  scene.add(water);
+};
+
+createWater();
 /**
  * Lights
  */
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-ambientLight.position.set(100, 250, 100);
-scene.add(ambientLight);
+let directionalLight = null;
+let ambientLight = null;
+const createLights = () => {
+  if (directionalLight !== null) {
+    scene.remove(directionalLight);
+    scene.remove(ambientLight);
+  }
+  // directional light / sunlight
+  directionalLight = new THREE.DirectionalLight(
+    parameters.directionalColor,
+    0.55
+  );
+  directionalLight.position.set(50, 60, -25);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.camera.near = 10;
+  directionalLight.shadow.camera.far = 250;
+  directionalLight.shadow.camera.right = 100;
+  directionalLight.shadow.camera.left = -100;
+  directionalLight.shadow.camera.top = 100;
+  directionalLight.shadow.camera.bottom = -100;
+  directionalLight.shadow.mapSize.width = 5000;
+  directionalLight.shadow.mapSize.height = 5000;
+  scene.add(directionalLight);
+
+  // ambient light
+  ambientLight = new THREE.AmbientLight(parameters.ambientColor);
+  scene.add(ambientLight);
+  scene.add(ambientLight);
+};
+createLights();
+
+const LightFolder = gui.addFolder("Lights");
+LightFolder.addColor(parameters, "ambientColor").onChange(createLights);
+LightFolder.addColor(parameters, "directionalColor").onChange(createLights);
 
 /**
  * Sizes
@@ -162,11 +189,11 @@ const camera = new THREE.PerspectiveCamera(
   75,
   sizes.width / sizes.height,
   0.1,
-  1000
+  10000
 );
-camera.position.x = 15;
-camera.position.y = 400;
-camera.position.z = 700;
+camera.position.x = -350;
+camera.position.y = 95;
+camera.position.z = -635;
 scene.add(camera);
 
 // Controls
@@ -190,10 +217,13 @@ controls.maxPolarAngle = Math.PI / 2;
  */
 const renderer = new THREE.WebGLRenderer({
   canvas: canvas,
+  antialias: true,
+  alpha: true,
 });
 renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 /**
  * Animate
  */
@@ -201,6 +231,13 @@ const clock = new THREE.Clock();
 
 const tick = () => {
   const elapsedTime = clock.getElapsedTime();
+
+  // vertData.forEach((vd, idx) => {
+  //   let y = vd.initH + Math.sin(elapsedTime + vd.phase) * vd.amplitude;
+  //   waterGeometry.attributes.position.setY(idx, y);
+  // });
+  // waterGeometry.attributes.position.needsUpdate = true;
+  // waterGeometry.computeVertexNormals();
 
   // Update Object
   // plane.rotation.y = 0.1 * elapsedTime
