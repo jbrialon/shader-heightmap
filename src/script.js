@@ -1,168 +1,145 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { MapControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as dat from "lil-gui";
 import Stats from "three/addons/libs/stats.module.js";
-import { ImprovedNoise } from "three/addons/math/ImprovedNoise.js";
 
-const gui = new dat.GUI();
+import { loadImage } from "./utils/utils";
+import { getZFromImageDataPoint } from "./utils/functions";
 
-const parameters = {
-  widthSeg: 100,
-  heightSeg: 100,
-  dispScale: 250,
-  ambientColor: 0x666666,
-  directionalColor: 0x5c4119,
-  fogColor: 0x9abcc7,
-  fogDensity: 0.0005,
-  fogNear: 1000,
-  fogFar: 2000,
-};
-
-/**
- * Renderer
- */
-const textureLoader = new THREE.TextureLoader();
-
+import HeightMap from "/annecy.png";
 /**
  * Base
  */
-// Canvas
-const canvas = document.querySelector("canvas.webgl");
-
+// Debug
+const gui = new dat.GUI();
 const stats = new Stats();
 document.body.appendChild(stats.dom);
 
-// Scene
+const terrainWidth = 60;
+const terrainHeight = 60;
+
+const params = {
+  directionalColor: 0xffffff,
+  directionalColorIntensity: 0.4,
+  fogColor: 0x9abcc7,
+  fogDensity: 0.0005,
+  fogNear: 40,
+  fogFar: 50,
+};
+
+// Canvas
+const canvas = document.querySelector("canvas.webgl");
+
+/**
+ * Scene
+ */
 const scene = new THREE.Scene();
 
+/**
+ * Fog
+ */
 const createFog = () => {
-  // scene.fog = new THREE.FogExp2(parameters.fogColor, parameters.fogDensity);
-  scene.fog = new THREE.Fog(
-    parameters.fogColor,
-    parameters.fogNear,
-    parameters.fogFar
-  );
+  scene.fog = new THREE.Fog(params.fogColor, params.fogNear, params.fogFar);
 };
 createFog();
 
 const fogFolder = gui.addFolder("Fog");
-fogFolder.addColor(parameters, "fogColor").onChange(createFog);
+fogFolder.addColor(params, "fogColor").onChange(createFog);
 // fogFolder.add(parameters, "fogDensity", 0, 0.005, 0.0001).onChange(createFog);
-fogFolder.add(parameters, "fogNear", 0, 2000, 1).onChange(createFog);
-fogFolder.add(parameters, "fogFar", 0, 2000, 1).onChange(createFog);
+fogFolder.add(params, "fogNear", 0, terrainWidth, 1).onChange(createFog);
+fogFolder.add(params, "fogFar", 0, terrainWidth, 1).onChange(createFog);
+
 /**
- * Object
+ * Map
  */
 
-let plane = null;
-let wireframeMaterial = null;
 let planeGeometry = null;
+let planeGeometries = [];
+let geometryPositionsArray = [];
+let colors = [];
 
-const displacementMap = textureLoader.load("/annecy.png", () => {
-  createGround();
-});
-displacementMap.wrapS = displacementMap.wrapT = THREE.RepeatWrapping;
-displacementMap.repeat.set(1, 1);
+// load heightmap to a new image first, then read its color data to set the heights of our plane vertices
+// see: https://gist.github.com/jawdatls/465d82f2158e1c4ce161
+let hmImage = await loadImage(HeightMap);
+const hmCanvas = document.createElement("canvas");
+hmCanvas.width = hmImage.width;
+hmCanvas.height = hmImage.height;
+const context = hmCanvas.getContext("2d");
+context.drawImage(hmImage, 0, 0);
+const hmImageData = context.getImageData(0, 0, hmCanvas.width, hmCanvas.height);
 
-function generateHeight(width, height) {
-  let seed = Math.PI / 4;
-  window.Math.random = function () {
-    const x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-  };
+// Create a PlaneGeometry
+planeGeometry = new THREE.PlaneGeometry(
+  terrainWidth,
+  terrainHeight,
+  terrainWidth,
+  terrainHeight
+);
+let geometryPositions = planeGeometry.getAttribute("position").array;
+let geometryUVs = planeGeometry.getAttribute("uv").array;
 
-  const size = width * height,
-    data = new Uint8Array(size);
-  const perlin = new ImprovedNoise(),
-    z = Math.random() * 100;
+// update each vertex position's z value according to the value we extracted from the heightmap image
+for (let index = 0; index < geometryUVs.length / 2; index++) {
+  let vertexU = geometryUVs[index * 2];
+  let vertexV = geometryUVs[index * 2 + 1];
+  // Update the z positions according to height map, inverse heightmap horizontally for the second loop
+  let terrainHeight = getZFromImageDataPoint(
+    hmImageData,
+    vertexU,
+    vertexV,
+    hmCanvas.width,
+    hmCanvas.height
+  );
+  geometryPositions[index * 3 + 2] = terrainHeight;
+}
+planeGeometries.push(planeGeometry);
+geometryPositionsArray.push(geometryPositions);
+planeGeometry.computeVertexNormals();
 
-  let quality = 1;
+// Define a color gradient
+const colorGradient = [
+  { value: 0, color: new THREE.Color(0x56658c) }, // water
+  { value: 0.45, color: new THREE.Color(0xd3b867) }, // sand
+  { value: 0.5, color: new THREE.Color(0xb6d168) }, // grass
+  { value: 0.7, color: new THREE.Color(0x4d876f) }, // threes
+  { value: 2.5, color: new THREE.Color(0x635143) }, // rock
+  { value: 4.5, color: new THREE.Color(0xffffff) }, // snow
+];
 
-  for (let j = 0; j < 4; j++) {
-    for (let i = 0; i < size; i++) {
-      const x = i % width,
-        y = ~~(i / width);
-      data[i] += Math.abs(
-        perlin.noise(x / quality, y / quality, z) * quality * 1.75
-      );
+for (let i = 0; i < geometryPositionsArray[0].length; i += 3) {
+  let x = geometryPositionsArray[0][i];
+  let y = geometryPositionsArray[0][i + 1];
+  let z = geometryPositionsArray[0][i + 2];
+  let color = new THREE.Color(0xffffff);
+
+  for (let j = 0; j < colorGradient.length - 1; j++) {
+    if (z >= colorGradient[j].value && z < colorGradient[j + 1].value) {
+      color = colorGradient[j].color;
     }
-
-    quality *= 5;
   }
 
-  return data;
+  colors.push(color.r, color.g, color.b);
 }
 
-const data = generateHeight(parameters.widthSeg, parameters.heightSeg);
+planeGeometry.setAttribute(
+  "color",
+  new THREE.BufferAttribute(new Float32Array(colors), 3)
+);
 
-const createGround = () => {
-  if (plane !== null) {
-    wireframeMaterial.dispose();
-    scene.remove(plane);
-  }
+const toonMaterial = new THREE.MeshToonMaterial({
+  vertexColors: true,
+});
 
-  wireframeMaterial = new THREE.MeshStandardMaterial({
-    flatShading: true,
-    displacementMap: displacementMap,
-    displacementScale: parameters.dispScale,
-  });
+const vertexMaterial = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  // wireframe: true,
+  flatShading: true,
+});
 
-  planeGeometry = new THREE.PlaneGeometry(
-    2000,
-    2000,
-    parameters.widthSeg - 1,
-    parameters.heightSeg - 1
-  );
-  // planeGeometry.rotateX(-Math.PI / 2);
+const plane = new THREE.Mesh(planeGeometry, vertexMaterial);
+plane.rotation.x = -Math.PI / 2;
+scene.add(plane);
 
-  // const vertices = planeGeometry.attributes.position.array;
-  // for (let i = 0, j = 0, l = vertices.length; i < l; i++, j += 3) {
-  //   vertices[j + 1] = data[i] * 50;
-  // }
-
-  const shaderMaterial = new THREE.ShaderMaterial({
-    vertexShader: document.getElementById("vertexShader").textContent,
-    fragmentShader: document.getElementById("fragmentShader").textContent,
-    uniforms: {
-      heightMap: { value: displacementMap },
-      heightScale: { value: parameters.dispScale },
-    },
-  });
-
-  plane = new THREE.Mesh(planeGeometry, wireframeMaterial);
-  plane.rotation.x = -Math.PI / 2;
-  scene.add(plane);
-};
-
-const groundFolder = gui.addFolder("Ground");
-groundFolder
-  .add(parameters, "widthSeg", 1, 1000, 1)
-  .onFinishChange(createGround);
-groundFolder
-  .add(parameters, "heightSeg", 1, 1000, 1)
-  .onFinishChange(createGround);
-groundFolder
-  .add(parameters, "dispScale", 0, 300, 1)
-  .onFinishChange(createGround);
-
-// Create Water
-let waterGeometry = null;
-const createWater = () => {
-  waterGeometry = new THREE.PlaneGeometry(1000, 1000, 15, 15);
-
-  let waterMaterial = new THREE.MeshLambertMaterial({
-    color: "aqua",
-    flatShading: true,
-  });
-  let water = new THREE.Mesh(waterGeometry, waterMaterial);
-
-  water.position.y = 21;
-  water.rotation.x = -Math.PI / 2;
-  scene.add(water);
-};
-
-createWater();
 /**
  * Lights
  */
@@ -176,8 +153,8 @@ const createLights = () => {
   }
   // directional light / sunlight
   directionalLight = new THREE.DirectionalLight(
-    parameters.directionalColor,
-    0.55
+    params.directionalColor,
+    params.directionalColorIntensity
   );
   directionalLight.position.set(50, 60, -25);
   directionalLight.castShadow = true;
@@ -192,16 +169,14 @@ const createLights = () => {
   scene.add(directionalLight);
 
   // ambient light
-  ambientLight = new THREE.AmbientLight(parameters.ambientColor);
-  scene.add(ambientLight);
+  ambientLight = new THREE.AmbientLight(0x666666);
   scene.add(ambientLight);
 };
 createLights();
 
 const LightFolder = gui.addFolder("Lights");
-LightFolder.addColor(parameters, "ambientColor").onChange(createLights);
-LightFolder.addColor(parameters, "directionalColor").onChange(createLights);
-
+LightFolder.addColor(params, "directionalColor").onChange(createLights);
+LightFolder.add(params, "directionalColorIntensity").onChange(createLights);
 /**
  * Sizes
  */
@@ -232,28 +207,16 @@ const camera = new THREE.PerspectiveCamera(
   75,
   sizes.width / sizes.height,
   0.1,
-  10000
+  100
 );
-camera.position.x = -350;
-camera.position.y = 95;
-camera.position.z = -635;
+camera.position.x = -15;
+camera.position.y = 7;
+camera.position.z = -23;
 scene.add(camera);
 
 // Controls
-// const controls = new OrbitControls(camera, canvas)
-// controls.enableDamping = true
-
-const controls = new MapControls(camera, canvas);
-
-controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
-controls.dampingFactor = 0.05;
-
-controls.screenSpacePanning = false;
-
-controls.minDistance = 100;
-controls.maxDistance = 2000;
-
-controls.maxPolarAngle = Math.PI / 2;
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
 
 /**
  * Renderer
@@ -267,6 +230,7 @@ renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
 /**
  * Animate
  */
@@ -275,15 +239,11 @@ const clock = new THREE.Clock();
 const tick = () => {
   const elapsedTime = clock.getElapsedTime();
 
-  // Update Object
-  // plane.rotation.y = 0.1 * elapsedTime
-
-  // plane.rotation.x = 0.15 * elapsedTime
+  // Update controls
+  controls.update();
 
   // stats
   stats.update();
-  // Update controls
-  controls.update();
 
   // Render
   renderer.render(scene, camera);
