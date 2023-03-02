@@ -6,7 +6,7 @@ import Stats from "three/addons/libs/stats.module.js";
 import { loadImage } from "./utils/utils";
 import { getZFromImageDataPoint } from "./utils/functions";
 
-import HeightMap from "/annecy.png";
+import HeightMap from "/heightmap_02.png";
 /**
  * Base
  */
