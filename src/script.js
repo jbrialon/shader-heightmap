@@ -99,11 +99,11 @@ planeGeometry.computeVertexNormals();
 // Define a color gradient
 const colorGradient = [
   { value: 0, color: new THREE.Color(0x56658c) }, // water
-  // { value: 0.45, color: new THREE.Color(0xd3b867) }, // sand
-  { value: 0.5, color: new THREE.Color(0xb6d168) }, // grass
+  { value: 0.257, color: new THREE.Color(0xd3b867) }, // sand
+  { value: 0.28, color: new THREE.Color(0xb6d168) }, // grass
   { value: 0.7, color: new THREE.Color(0x4d876f) }, // threes
-  { value: 2.5, color: new THREE.Color(0x635143) }, // rock
-  { value: 4.5, color: new THREE.Color(0xffffff) }, // snow
+  { value: 1.4, color: new THREE.Color(0x635143) }, // rock
+  { value: 3, color: new THREE.Color(0xffffff) }, // snow
 ];
 
 for (let i = 0; i < geometryPositionsArray[0].length; i += 3) {
