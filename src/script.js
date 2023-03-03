@@ -164,6 +164,7 @@ const createLights = () => {
   if (directionalLight !== null) {
     scene.remove(directionalLight);
     scene.remove(ambientLight);
+    scene.remove(dirLightHelper);
   }
   // directional light / sunlight
   directionalLight = new THREE.DirectionalLight(
