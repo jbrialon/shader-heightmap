@@ -99,7 +99,7 @@ planeGeometry.computeVertexNormals();
 // Define a color gradient
 const colorGradient = [
   { value: 0, color: new THREE.Color(0x56658c) }, // water
-  { value: 0.45, color: new THREE.Color(0xd3b867) }, // sand
+  // { value: 0.45, color: new THREE.Color(0xd3b867) }, // sand
   { value: 0.5, color: new THREE.Color(0xb6d168) }, // grass
   { value: 0.7, color: new THREE.Color(0x4d876f) }, // threes
   { value: 2.5, color: new THREE.Color(0x635143) }, // rock
@@ -126,17 +126,30 @@ planeGeometry.setAttribute(
   new THREE.BufferAttribute(new Float32Array(colors), 3)
 );
 
+const threeTone = new THREE.TextureLoader().load("gradientMaps/threeTone.jpg");
+threeTone.minFilter = THREE.NearestFilter;
+threeTone.magFilter = THREE.NearestFilter;
+
+const fourTone = new THREE.TextureLoader().load("gradientMaps/fourTone.jpg");
+fourTone.minFilter = THREE.NearestFilter;
+fourTone.magFilter = THREE.NearestFilter;
+
+const fiveTone = new THREE.TextureLoader().load("gradientMaps/fiveTone.jpg");
+fiveTone.minFilter = THREE.NearestFilter;
+fiveTone.magFilter = THREE.NearestFilter;
+
 const toonMaterial = new THREE.MeshToonMaterial({
   vertexColors: true,
+  gradientMap: fiveTone,
 });
 
 const vertexMaterial = new THREE.MeshStandardMaterial({
   vertexColors: true,
   // wireframe: true,
-  flatShading: true,
+  flatShading: false,
 });
 
-const plane = new THREE.Mesh(planeGeometry, vertexMaterial);
+const plane = new THREE.Mesh(planeGeometry, toonMaterial);
 plane.rotation.x = -Math.PI / 2;
 scene.add(plane);
 
@@ -146,6 +159,7 @@ scene.add(plane);
 
 let directionalLight = null;
 let ambientLight = null;
+let dirLightHelper = null;
 const createLights = () => {
   if (directionalLight !== null) {
     scene.remove(directionalLight);
@@ -168,12 +182,37 @@ const createLights = () => {
   directionalLight.shadow.mapSize.height = 5000;
   scene.add(directionalLight);
 
+  dirLightHelper = new THREE.DirectionalLightHelper(directionalLight, 10);
+  scene.add(dirLightHelper);
+
   // ambient light
   ambientLight = new THREE.AmbientLight(0x666666);
   scene.add(ambientLight);
 };
 createLights();
 
+const speed = 0.01; // adjust the speed of rotation as needed
+const radius = 100; // adjust the radius of rotation as needed
+let angle = 0;
+
+const animateLight = () => {
+  angle += speed;
+
+  // calculate the new position of the light
+  const x = radius * Math.cos(angle);
+  const z = radius * Math.sin(angle);
+  directionalLight.position.set(x, 60, z);
+
+  // set the light's target to the center of the scene
+  const center = new THREE.Vector3(0, 0, 0);
+  directionalLight.target.position.copy(center);
+
+  // update the position of the directional light helper
+  dirLightHelper.update();
+
+  // make the light look at the center of the scene
+  directionalLight.lookAt(center);
+};
 const LightFolder = gui.addFolder("Lights");
 LightFolder.addColor(params, "directionalColor").onChange(createLights);
 LightFolder.add(params, "directionalColorIntensity").onChange(createLights);
@@ -245,6 +284,7 @@ const tick = () => {
   // stats
   stats.update();
 
+  animateLight();
   // Render
   renderer.render(scene, camera);
 
